@@ -12,4 +12,8 @@ dependencies = ["fastapi",
 "numpy",
 "pandas",
 "scikit-learn"
-,"python-multipart",]
+,"python-multipart",
+"streamlit",
+"matplotlib",
+ "plotly",
+ "reportlab",]
