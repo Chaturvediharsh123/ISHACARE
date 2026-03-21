@@ -1,0 +1,15 @@
+[project]
+name = "synapsecare"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["fastapi",
+"uvicorn",
+"pdfplumber",
+"pytesseract",
+"pillow",
+"numpy",
+"pandas",
+"scikit-learn"
+,"python-multipart",]
