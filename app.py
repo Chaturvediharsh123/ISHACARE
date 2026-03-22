@@ -56,13 +56,72 @@ label, .stMarkdown, .stSubheader {
 # ---------- HEADER ----------
 st.markdown('<div class="title fade">ISHACARE Dashboard</div>', unsafe_allow_html=True)
 
-# ---------- UPLOAD ----------
+# ---------- HERO SECTION ----------
 file = st.file_uploader("Upload Medical Report", type=["pdf", "png", "jpg"])
 
+if not file:
+    st.markdown("### 🧠 AI-Powered Health Intelligence System")
+
+    st.markdown("""
+    Welcome to **ISHACARE** 🚀  
+    Your smart assistant for analyzing medical reports using **AI + Machine Learning**.
+
+    🔍 Upload your report and get:
+    - 📊 Health Score
+    - 🧠 AI Risk Prediction
+    - ⚠ Disease Detection
+    - 💡 Personalized Recommendations
+    - 📄 Downloadable AI Report
+    """)
+
+    st.divider()
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.markdown("### 📊 Smart Analysis")
+        st.info("Automatically extracts and analyzes medical parameters")
+
+    with col2:
+        st.markdown("### 🧠 AI Prediction")
+        st.info("Uses ML models to predict health risks")
+
+    with col3:
+        st.markdown("### 📄 Report Generation")
+        st.info("Generates detailed downloadable health reports")
+
+    st.divider()
+
+    st.markdown("### ⚙️ How It Works")
+
+    st.markdown("""
+    1️⃣ Upload your medical report (PDF/Image)  
+    2️⃣ AI extracts important health parameters  
+    3️⃣ ML model analyzes risk  
+    4️⃣ Get insights + downloadable report  
+    """)
+
+    st.divider()
+
+    if st.button("✨ Try Demo Without Upload"):
+        st.session_state["demo"] = {
+            "health_score": 65,
+            "risk_analysis": {
+                "diabetes": "High",
+                "heart": "Low",
+                "liver": "Low",
+                "kidney": "Low",
+                "anemia": "High"
+            },
+            "alerts": ["High glucose detected", "Low hemoglobin"],
+            "structured_data": {
+                "glucose": {"value": 160},
+                "hemoglobin": {"value": 10},
+                "cholesterol": {"value": 220}
+            }
+        }
+
 # ---------- LOAD ML MODEL ----------
-
-
-# ---------- LOAD ML MODEL 
 MODEL_PATH = os.path.join("Backend", "Models", "model.pkl")
 
 try:
@@ -73,9 +132,8 @@ except:
 
 def predict_ml(data):
     if not model:
-        return "Model not loaded"
+        return "Model not loaded", 0
 
-    #  MATCH TRAINING FEATURES (IMPORTANT FIX)
     features = np.array([[
         data.get("hemoglobin", 0),
         data.get("cholesterol", 0),
@@ -83,22 +141,40 @@ def predict_ml(data):
     ]])
 
     pred = model.predict(features)[0]
+    prob = model.predict_proba(features)[0][pred]
 
-    return "High Risk " if pred == 1 else "Low Risk "
+    label = "High Risk ⚠️" if pred == 1 else "Low Risk ✅"
+    return label, round(prob * 100, 2)
 
-# ---------- CONFIDENCE ----------
+
 def calculate_confidence(data):
-    confidence = 100
-    for k, v in data.items():
-        val = v["value"] if isinstance(v, dict) else v
-        if val == 0:
-            confidence -= 10
-        elif val < 0:
-            confidence -= 20
-    return max(confidence, 50)
+    total = len(data)
+    valid = sum(1 for v in data.values() if (v["value"] if isinstance(v, dict) else v) > 0)
+    return round((valid / total) * 100, 2)
 
-# ---------- PDF ----------
-def generate_pdf(data):
+
+def generate_recommendations(risks):
+    recs = []
+
+    if risks.get("diabetes") == "High":
+        recs.append("Reduce sugar intake and monitor glucose regularly")
+
+    if risks.get("heart") == "High":
+        recs.append("Avoid oily food and maintain regular exercise")
+
+    if risks.get("liver") == "High":
+        recs.append("Avoid alcohol and take liver-friendly diet")
+
+    if risks.get("kidney") == "High":
+        recs.append("Stay hydrated and monitor creatinine levels")
+
+    if risks.get("anemia") == "High":
+        recs.append("Increase iron intake (spinach, dates, etc.)")
+
+    return recs if recs else ["Maintain a healthy lifestyle ✅"]
+
+
+def generate_pdf(data, ml_result, confidence, recommendations):
 
     doc = SimpleDocTemplate("health_report.pdf")
     styles = getSampleStyleSheet()
@@ -108,10 +184,16 @@ def generate_pdf(data):
 
     elements.append(Paragraph("AI HEALTH REPORT", styles['Title']))
     elements.append(Spacer(1, 10))
-    elements.append(Paragraph(f"Date: {now}", styles['Normal']))
+    elements.append(Paragraph(f"Generated on: {now}", styles['Normal']))
     elements.append(Spacer(1, 10))
 
-    # Risk Table
+    elements.append(Paragraph("Summary", styles['Heading2']))
+    elements.append(Paragraph(f"ML Prediction: {ml_result}", styles['Normal']))
+    elements.append(Paragraph(f"Confidence Score: {confidence}%", styles['Normal']))
+    elements.append(Spacer(1, 10))
+
+    elements.append(Paragraph("Risk Analysis", styles['Heading2']))
+
     risk_data = [["Condition", "Status"]]
     for k, v in data["risk_analysis"].items():
         risk_data.append([k, v])
@@ -126,7 +208,12 @@ def generate_pdf(data):
     elements.append(table)
     elements.append(Spacer(1, 10))
 
-    # Graph
+    elements.append(Paragraph("AI Recommendations", styles['Heading2']))
+    for r in recommendations:
+        elements.append(Paragraph(f"- {r}", styles['Normal']))
+
+    elements.append(Spacer(1, 10))
+
     labels = list(data["structured_data"].keys())
     values = [v["value"] if isinstance(v, dict) else v for v in data["structured_data"].values()]
 
@@ -140,28 +227,32 @@ def generate_pdf(data):
 
     doc.build(elements)
 
+
 # ---------- MAIN ----------
-if file:
+if file or "demo" in st.session_state:
 
     with st.spinner("Analyzing..."):
         time.sleep(1)
-        res = requests.post(
-            "http://127.0.0.1:8000/analyze/",
-            files={"file": file}
-        )
-        data = res.json()
+
+        if "demo" in st.session_state:
+            data = st.session_state["demo"]
+        else:
+            res = requests.post(
+                "http://127.0.0.1:8000/analyze/",
+                files={"file": file}
+            )
+            data = res.json()
 
     score = data["health_score"]
     risks = data["risk_analysis"]
     alerts = data["alerts"]
     structured_data = data["structured_data"]
 
-    # ---------- NEW: ML + CONFIDENCE ----------
     flat_data = {k: (v["value"] if isinstance(v, dict) else v) for k, v in structured_data.items()}
-    ml_result = predict_ml(flat_data)
+    ml_result, ml_conf = predict_ml(flat_data)
     confidence_score = calculate_confidence(structured_data)
+    recommendations = generate_recommendations(risks)
 
-    # ---------- CARDS ----------
     c1, c2, c3, c4 = st.columns(4)
 
     c1.metric("Health Score", score)
@@ -169,11 +260,10 @@ if file:
 
     c2.metric("Risks", sum(1 for v in risks.values() if v == "High"))
     c3.metric("ML Prediction", ml_result)
-    c4.metric("Confidence", f"{confidence_score}%")
+    c4.metric("Confidence", f"{ml_conf}%")
 
     st.divider()
 
-    # ---------- STATUS ----------
     st.subheader("Overall Status")
 
     if score > 80:
@@ -183,7 +273,6 @@ if file:
     else:
         st.error("🔴 Critical")
 
-    # ---------- GRAPH ----------
     st.subheader("Health Parameters")
 
     labels = []
@@ -198,7 +287,6 @@ if file:
     fig = px.bar(df, x="Parameter", y="Value", text="Value")
     st.plotly_chart(fig, use_container_width=True)
 
-    # ---------- RISK TABLE ----------
     st.subheader("Risk Analysis")
 
     risk_df = pd.DataFrame({
@@ -208,7 +296,6 @@ if file:
 
     st.dataframe(risk_df, use_container_width=True)
 
-    # ---------- PARAM TABLE ----------
     st.subheader("Extracted Parameters")
 
     param_df = pd.DataFrame({
@@ -218,7 +305,6 @@ if file:
 
     st.dataframe(param_df, use_container_width=True)
 
-    # ---------- ALERTS ----------
     st.subheader("Alerts")
 
     if score < 50:
@@ -230,19 +316,22 @@ if file:
     for a in alerts:
         st.warning(a)
 
-    # ---------- AI INSIGHTS ----------
     st.subheader("AI Insights")
 
-    if ml_result == "High Risk":
+    if "High Risk" in ml_result:
         st.warning("⚠ High disease risk detected. Please consult a doctor.")
     else:
         st.success("✔ No major disease risk detected.")
 
-    # ---------- DOWNLOAD ----------
+    st.subheader("💡 Recommendations")
+
+    for r in recommendations:
+        st.info(r)
+
     st.subheader("Report")
 
     if st.button("📄 Generate & Download Report"):
-        generate_pdf(data)
+        generate_pdf(data, ml_result, ml_conf, recommendations)
 
         with open("health_report.pdf", "rb") as f:
             st.download_button("⬇ Download Report", f, file_name="health_report.pdf")
