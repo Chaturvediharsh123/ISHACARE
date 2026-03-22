@@ -3,15 +3,18 @@ import requests
 import plotly.express as px
 import pandas as pd
 import time
+import pickle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import inch
 from datetime import datetime
 import matplotlib.pyplot as plt
+import os
+import numpy as np
 
 # ---------- CONFIG ----------
-st.set_page_config(page_title="Health AI", layout="wide")
+st.set_page_config(page_title="ISHACARE", layout="wide")
 
 # ---------- CSS ----------
 st.markdown("""
@@ -51,10 +54,48 @@ label, .stMarkdown, .stSubheader {
 """, unsafe_allow_html=True)
 
 # ---------- HEADER ----------
-st.markdown('<div class="title fade">Health Analysis Dashboard</div>', unsafe_allow_html=True)
+st.markdown('<div class="title fade">ISHACARE Dashboard</div>', unsafe_allow_html=True)
 
 # ---------- UPLOAD ----------
 file = st.file_uploader("Upload Medical Report", type=["pdf", "png", "jpg"])
+
+# ---------- LOAD ML MODEL ----------
+
+
+# ---------- LOAD ML MODEL 
+MODEL_PATH = os.path.join("Backend", "Models", "model.pkl")
+
+try:
+    model = pickle.load(open(MODEL_PATH, "rb"))
+except:
+    model = None
+
+
+def predict_ml(data):
+    if not model:
+        return "Model not loaded"
+
+    #  MATCH TRAINING FEATURES (IMPORTANT FIX)
+    features = np.array([[
+        data.get("hemoglobin", 0),
+        data.get("cholesterol", 0),
+        data.get("glucose", 0)
+    ]])
+
+    pred = model.predict(features)[0]
+
+    return "High Risk " if pred == 1 else "Low Risk "
+
+# ---------- CONFIDENCE ----------
+def calculate_confidence(data):
+    confidence = 100
+    for k, v in data.items():
+        val = v["value"] if isinstance(v, dict) else v
+        if val == 0:
+            confidence -= 10
+        elif val < 0:
+            confidence -= 20
+    return max(confidence, 50)
 
 # ---------- PDF ----------
 def generate_pdf(data):
@@ -115,16 +156,32 @@ if file:
     alerts = data["alerts"]
     structured_data = data["structured_data"]
 
+    # ---------- NEW: ML + CONFIDENCE ----------
+    flat_data = {k: (v["value"] if isinstance(v, dict) else v) for k, v in structured_data.items()}
+    ml_result = predict_ml(flat_data)
+    confidence_score = calculate_confidence(structured_data)
+
     # ---------- CARDS ----------
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
 
     c1.metric("Health Score", score)
     c1.progress(score/100)
 
     c2.metric("Risks", sum(1 for v in risks.values() if v == "High"))
-    c3.metric("Alerts", len(alerts))
+    c3.metric("ML Prediction", ml_result)
+    c4.metric("Confidence", f"{confidence_score}%")
 
     st.divider()
+
+    # ---------- STATUS ----------
+    st.subheader("Overall Status")
+
+    if score > 80:
+        st.success("🟢 Healthy")
+    elif score > 50:
+        st.warning("🟡 Moderate")
+    else:
+        st.error("🔴 Critical")
 
     # ---------- GRAPH ----------
     st.subheader("Health Parameters")
@@ -167,12 +224,25 @@ if file:
     if score < 50:
         st.error("🚨 Critical condition")
 
+    if not alerts:
+        st.success("✅ No major issues detected")
+
     for a in alerts:
         st.warning(a)
 
+    # ---------- AI INSIGHTS ----------
+    st.subheader("AI Insights")
+
+    if ml_result == "High Risk":
+        st.warning("⚠ High disease risk detected. Please consult a doctor.")
+    else:
+        st.success("✔ No major disease risk detected.")
+
     # ---------- DOWNLOAD ----------
-    if st.button("📄 Generate Report"):
+    st.subheader("Report")
+
+    if st.button("📄 Generate & Download Report"):
         generate_pdf(data)
 
         with open("health_report.pdf", "rb") as f:
-            st.download_button("Download Report", f, file_name="report.pdf")
+            st.download_button("⬇ Download Report", f, file_name="health_report.pdf")
