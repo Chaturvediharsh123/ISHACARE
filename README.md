@@ -140,7 +140,7 @@ Stay tuned - ISHACARE is growing fast!
 
 ---
 
-*Built with ❤️ for better health insights*
+*Built with love for better health insights*
 
 ## Contributing
 
@@ -151,4 +151,4 @@ Stay tuned - ISHACARE is growing fast!
 
 ## License
 
-[Add license information here]
+[MIT LICENSE ]
